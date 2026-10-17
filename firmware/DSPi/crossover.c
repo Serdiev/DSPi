@@ -272,11 +272,13 @@ static void filter_assign_2nd_order_rp2350(Filter *f,
         f->sva1 = sva1;
         f->sva2 = sva2;
         f->sva3 = sva3;
-        f->g = g;
+        // Folded coefficients — see dsp_svf.h: the kernel never materialises
+        // v2, it reads ic2 directly and updates ic2 with the pre-doubled 2*g.
+        f->g = 2.0f * g;
         if (is_hp) {
-            f->svm0 = 1.0f; f->svm1 = -k; f->svm2 = -1.0f;
+            f->svm0 = 1.0f; f->svm1 = -k - g; f->svm2 = -1.0f;
         } else {
-            f->svm0 = 0.0f; f->svm1 = 0.0f; f->svm2 = 1.0f;
+            f->svm0 = 0.0f; f->svm1 = g; f->svm2 = 1.0f;
         }
         // Fallback biquad coeffs (unused in SVF path, keep sane)
         f->b0 = 1.0f; f->b1 = 0.0f; f->b2 = 0.0f;
