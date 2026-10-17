@@ -62,6 +62,38 @@ bool any_delay_active = false;
 // init keeps this correct as NUM_CHANNELS changes (17 on RP2350, 7 on RP2040).
 uint8_t channel_band_counts[NUM_CHANNELS] = {[0 ... NUM_CHANNELS-1] = 10};
 
+// Design shadow: what each section's coefficients were last designed from.
+// dsp_recalculate_all_filters() uses it to skip sections whose recipe, LT
+// target Q and sample rate are all unchanged, which is the common case when a
+// host re-sends the whole bank (preset load, A/B compare, re-sync) or when a
+// sample-rate change re-enters with nothing else touched.  A stale entry only
+// ever costs one redundant design; dsp_compute_coefficients() is the single
+// place that writes it, so it can never make the coefficients look up to date
+// when they are not.
+static void dsp_design_section(EqParamPacket *p, Filter *f, float sample_rate);
+
+static EqParamPacket peq_designed_recipe[NUM_CHANNELS][MAX_BANDS];
+static uint16_t peq_designed_qp[NUM_CHANNELS][MAX_BANDS];
+static float peq_designed_rate;
+static bool peq_designed_valid;
+
+// ---------------------------------------------------------------------------
+// Design entry point + shadow bookkeeping
+// ---------------------------------------------------------------------------
+
+void dsp_compute_coefficients(EqParamPacket *p, Filter *f, float sample_rate) {
+    dsp_design_section(p, f, sample_rate);
+
+    if (p->channel < NUM_CHANNELS && p->band < MAX_BANDS) {
+        // Record the *stored* recipe, not `*p`: the design clamps p in place,
+        // and the clamp must not make every later comparison look stale.
+        peq_designed_recipe[p->channel][p->band] = filter_recipes[p->channel][p->band];
+        peq_designed_qp[p->channel][p->band] = peq_qp_x512[p->channel][p->band];
+    }
+    peq_designed_rate = sample_rate;
+    peq_designed_valid = true;
+}
+
 #if !PICO_RP2350
 DSP_TIME_CRITICAL int32_t fast_mul_q28(int32_t a, int32_t b) {
     int32_t ah = a >> 16;
@@ -77,7 +109,7 @@ DSP_TIME_CRITICAL int32_t fast_mul_q28(int32_t a, int32_t b) {
 }
 #endif
 
-void dsp_compute_coefficients(EqParamPacket *p, Filter *f, float sample_rate) {
+static void dsp_design_section(EqParamPacket *p, Filter *f, float sample_rate) {
     // 0xFF-safe interpretation: bypass byte must be exactly 1 to bypass.
     // Any other value (0, 0xFF padding from legacy hosts, garbage) leaves
     // the band active.  See Documentation/Features/band_bypass_spec.md.
@@ -342,6 +374,7 @@ void dsp_compute_coefficients(EqParamPacket *p, Filter *f, float sample_rate) {
 }
 
 void dsp_init_default_filters() {
+    peq_designed_valid = false;
     memset(filters, 0, sizeof(filters));
     memset(channel_delays_ms, 0, sizeof(channel_delays_ms));
     memset(peq_qp_x512, 0, sizeof(peq_qp_x512));
@@ -400,9 +433,20 @@ void dsp_update_delay_samples(float sample_rate) {
 
 void dsp_recalculate_all_filters(float sample_rate) {
     dsp_update_delay_samples(sample_rate);
+
+    // A rate change invalidates every section at once.
+    const bool rate_changed = !peq_designed_valid || peq_designed_rate != sample_rate;
+
     for (int ch = 0; ch < NUM_CHANNELS; ch++) {
         bool all_bypassed = true;
         for (int b = 0; b < channel_band_counts[ch]; b++) {
+            if (!rate_changed &&
+                peq_designed_qp[ch][b] == peq_qp_x512[ch][b] &&
+                memcmp(&peq_designed_recipe[ch][b], &filter_recipes[ch][b],
+                       sizeof(EqParamPacket)) == 0) {
+                if (!filters[ch][b].bypass) all_bypassed = false;
+                continue;
+            }
             dsp_compute_coefficients(&filter_recipes[ch][b], &filters[ch][b], sample_rate);
             if (!filters[ch][b].bypass) {
                 all_bypassed = false;
