@@ -160,8 +160,17 @@ static void dsp_design_section(EqParamPacket *p, Filter *f, float sample_rate) {
         }
     }
 
-    // gain_db holds fp for LT; skip the dB conversion (it could produce inf).
-    float A = is_lt ? 1.0f : powf(10.0f, p->gain_db / 40.0f);
+    // Shelf/peaking gain: A = 10^(gain_db/40).  powf is the most expensive
+    // call in the design, and six of the fourteen PEQ types (low/high pass,
+    // notch, both all-passes, both first-order pass filters) never look at it,
+    // nor at gain_db at all — for those the conversion is pure waste.
+    // gain_db also holds fp for the Linkwitz Transform, which never converts.
+    bool type_uses_gain = (p->type == FILTER_PEAKING ||
+                           p->type == FILTER_LOWSHELF ||
+                           p->type == FILTER_HIGHSHELF ||
+                           p->type == FILTER_LOWSHELF1 ||
+                           p->type == FILTER_HIGHSHELF1);
+    float A = type_uses_gain ? powf(10.0f, p->gain_db / 40.0f) : 1.0f;
 
 #if PICO_RP2350
     // SVF/biquad crossover decision + state reset on path change
@@ -221,7 +230,11 @@ static void dsp_design_section(EqParamPacket *p, Filter *f, float sample_rate) {
 
         // SVF coefficients (Simper, "SvfLinearTrapAllOutputs", Cytomic 2021)
         // Shelf k = 1/Q matches RBJ Audio-EQ-Cookbook response exactly.
-        float g = tanf(3.1415926535f * p->freq / sample_rate);
+        // The Linkwitz Transform needs this prewarp twice — once as the g it
+        // throws away for the pole corner below, once as the zero corner g0 —
+        // so evaluate it once and keep it.
+        const float tan_f0 = tanf(3.1415926535f * p->freq / sample_rate);
+        float g = tan_f0;
         float k = 1.0f / p->Q;
 
         switch (p->type) {
@@ -261,7 +274,7 @@ static void dsp_design_section(EqParamPacket *p, Filter *f, float sample_rate) {
             case FILTER_LINKWITZ_TRANSFORM: {
                 // H = hp + (g0/(Q0*gp))*bp + (g0/gp)^2*lp with hp = in - k*v1 - v2,
                 // bp = v1, lp = v2; zeros prewarped at f0, poles at fp.
-                float g0 = tanf(3.1415926535f * p->freq / sample_rate);
+                float g0 = tan_f0;
                 float r = g0 / g;
                 svm0_f = 1.0f;
                 svm1_f = r / p->Q - k;
