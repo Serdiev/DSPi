@@ -286,3 +286,6 @@ firmware load with `qp = 0`, i.e. the 0.707 default for any LT band.
 - RAM cost: 408 bytes (RP2350) / 168 bytes (RP2040).
 - Flash: `PresetSlot.peq_qp_x512`, version-gated tail append at
   SLOT_DATA_VERSION 30.
+- Performance, the cost model behind the SVF/biquad crossover, how many bands
+  this part can run, and a list of optimizations that were tried and rejected
+  on measurement: `peq_performance.md`.
