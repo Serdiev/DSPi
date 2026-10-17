@@ -418,6 +418,44 @@ void dsp_recalculate_all_filters(float sample_rate) {
 
 #if PICO_RP2350
 DSP_TIME_CRITICAL
+bool dsp_peq_block_is_silent(Filter * __restrict f, const float * __restrict samples,
+                             uint32_t count, uint8_t channel) {
+    // Early-exit scan: audio that is present costs one compare.
+    for (uint32_t i = 0; i < count; i++)
+        if (samples[i] != 0.0f) return false;
+
+    // Digital silence in, digital silence out whatever the cascade does, so
+    // the sections only have to be reset.  Resetting (rather than freezing)
+    // keeps the output self-consistent and leaves no stale tail when signal
+    // comes back.  This matters because an output with no enabled crosspoint
+    // is a memset-to-zero buffer that still costs a full PEQ pass otherwise.
+    uint8_t num_bands = channel_band_counts[channel];
+    for (int band = 0; band < num_bands; band++) {
+        Filter *sec = &f[band];
+        if (sec->bypass) continue;
+        sec->s1 = 0.0f; sec->s2 = 0.0f;
+        sec->svic1eq = 0.0f; sec->svic2eq = 0.0f;
+    }
+    return true;
+}
+#else
+bool dsp_peq_block_is_silent(Filter * __restrict f, const int32_t * __restrict samples,
+                             uint32_t count, uint8_t channel) {
+    for (uint32_t i = 0; i < count; i++)
+        if (samples[i] != 0) return false;
+
+    uint8_t num_bands = channel_band_counts[channel];
+    for (int band = 0; band < num_bands; band++) {
+        Filter *sec = &f[band];
+        if (sec->bypass) continue;
+        sec->s1 = 0; sec->s2 = 0;
+    }
+    return true;
+}
+#endif
+
+#if PICO_RP2350
+DSP_TIME_CRITICAL
 float dsp_process_channel(Filter * __restrict filters, float input, uint8_t channel) {
     float sample = input;
     uint8_t count = channel_band_counts[channel];

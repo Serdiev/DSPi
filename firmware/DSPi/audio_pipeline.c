@@ -386,7 +386,8 @@ void __not_in_flash_func(process_input_block)(uint32_t sample_count) {
     // no stale activity.
     for (int k = 0; k < n_active_inputs; k++) {
         float *ibuf = input_bufs[k];
-        if (!is_bypassed && !channel_bypassed[k]) {
+        if (!is_bypassed && !channel_bypassed[k] &&
+            !dsp_peq_block_is_silent(filters[k], ibuf, sample_count, k)) {
             dsp_process_channel_block(filters[k], ibuf, sample_count, k);
         }
         float pk = 0.0f;
@@ -560,7 +561,8 @@ void __not_in_flash_func(process_input_block)(uint32_t sample_count) {
                 uint8_t eq_ch = CH_OUT_1 + out;
                 if (!channel_xover_bypassed[eq_ch])
                     xover_process_channel_block(xover_filters[eq_ch], buf_out[out], sample_count);
-                if (!channel_bypassed[eq_ch]) {
+                if (!channel_bypassed[eq_ch] &&
+                    !dsp_peq_block_is_silent(filters[eq_ch], buf_out[out], sample_count, eq_ch)) {
                     dsp_process_channel_block(filters[eq_ch], buf_out[out], sample_count, eq_ch);
                 }
             }
@@ -699,7 +701,8 @@ void __not_in_flash_func(process_input_block)(uint32_t sample_count) {
                 uint8_t eq_ch = CH_OUT_1 + out;
                 if (!channel_xover_bypassed[eq_ch])
                     xover_process_channel_block(xover_filters[eq_ch], buf_out[out], sample_count);
-                if (!channel_bypassed[eq_ch]) {
+                if (!channel_bypassed[eq_ch] &&
+                    !dsp_peq_block_is_silent(filters[eq_ch], buf_out[out], sample_count, eq_ch)) {
                     dsp_process_channel_block(filters[eq_ch], buf_out[out], sample_count, eq_ch);
                 }
             }
@@ -863,7 +866,8 @@ void __not_in_flash_func(process_input_block)(uint32_t sample_count) {
     // ========== PASS 2: Per-Input EQ + Metering ========== (RP2040: 2 inputs)
     for (int k = 0; k < NUM_INPUT_CHANNELS; k++) {
         int32_t *ibuf = input_bufs[k];
-        if (!is_bypassed && !channel_bypassed[k]) {
+        if (!is_bypassed && !channel_bypassed[k] &&
+            !dsp_peq_block_is_silent(filters[k], ibuf, sample_count, k)) {
             dsp_process_channel_block(filters[k], ibuf, sample_count, k);
         }
         int32_t pk = 0;
@@ -965,7 +969,8 @@ void __not_in_flash_func(process_input_block)(uint32_t sample_count) {
                 uint8_t eq_ch = CH_OUT_1 + out;
                 if (!channel_xover_bypassed[eq_ch])
                     xover_process_channel_block(xover_filters[eq_ch], buf_out[out], sample_count);
-                if (!channel_bypassed[eq_ch])
+                if (!channel_bypassed[eq_ch] &&
+                    !dsp_peq_block_is_silent(filters[eq_ch], buf_out[out], sample_count, eq_ch))
                     dsp_process_channel_block(filters[eq_ch], buf_out[out], sample_count, eq_ch);
             }
             // Per-sample vol ramp; step==0 in steady state → constant-gain path.
@@ -1093,7 +1098,8 @@ void __not_in_flash_func(process_input_block)(uint32_t sample_count) {
                 uint8_t eq_ch = CH_OUT_1 + out;
                 if (!channel_xover_bypassed[eq_ch])
                     xover_process_channel_block(xover_filters[eq_ch], buf_out[out], sample_count);
-                if (!channel_bypassed[eq_ch])
+                if (!channel_bypassed[eq_ch] &&
+                    !dsp_peq_block_is_silent(filters[eq_ch], buf_out[out], sample_count, eq_ch))
                     dsp_process_channel_block(filters[eq_ch], buf_out[out], sample_count, eq_ch);
             }
             float matrix_gain_f = matrix_mixer.outputs[out].gain_linear;

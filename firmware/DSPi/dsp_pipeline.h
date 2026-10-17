@@ -31,6 +31,20 @@ void dsp_compute_coefficients(EqParamPacket *p, Filter *f, float sample_rate);
 void dsp_recalculate_all_filters(float sample_rate);
 void dsp_update_delay_samples(float sample_rate);
 
+// Returns true when the block is digital silence, in which case it has reset
+// every section's state on `filters` and the caller must not run the cascade.
+// A block of exact zeros produces exact zeros through any cascade, so the only
+// work left is clearing the state; see dsp_peq_block_is_silent().
+#if PICO_RP2350
+bool dsp_peq_block_is_silent(Filter * __restrict filters,
+                             const float * __restrict samples, uint32_t count,
+                             uint8_t channel);
+#else
+bool dsp_peq_block_is_silent(Filter * __restrict filters,
+                             const int32_t * __restrict samples, uint32_t count,
+                             uint8_t channel);
+#endif
+
 // Optimized processing function
 #if PICO_RP2350
 float dsp_process_channel(Filter * __restrict filters, float input, uint8_t channel);
