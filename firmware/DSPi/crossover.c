@@ -44,6 +44,16 @@
 // =============================================================================
 
 XoverFilter   xover_filters[NUM_CHANNELS][MAX_XOVER_BANDS];
+
+// Design shadow, mirroring the PEQ one in dsp_pipeline.c: a bulk apply or a
+// single PEQ edit re-enters dsp_recalculate_all_filters(), which also rebuilds
+// every crossover band — up to four sections each, sixteen bands across the
+// device — even when no crossover recipe moved.  Both arrays are per band for
+// the same reason as on the PEQ side: a shared flag or rate would be moved by
+// the first band designed in the pass and let the rest of the pass skip.
+static EqParamPacket xover_designed_recipe[NUM_CHANNELS][MAX_XOVER_BANDS];
+static float xover_designed_rate[NUM_CHANNELS][MAX_XOVER_BANDS];
+static bool xover_designed_ok[NUM_CHANNELS][MAX_XOVER_BANDS];
 EqParamPacket xover_recipes[NUM_CHANNELS][MAX_XOVER_BANDS];
 bool          channel_xover_bypassed[NUM_CHANNELS];
 
@@ -693,6 +703,7 @@ void xover_update_channel_bypass(uint8_t ch) {
 }
 
 void xover_init_default_filters(void) {
+    memset(xover_designed_ok, 0, sizeof(xover_designed_ok));
     memset(xover_filters, 0, sizeof(xover_filters));
     memset(xover_recipes, 0, sizeof(xover_recipes));
     for (int ch = 0; ch < NUM_CHANNELS; ch++) {
@@ -723,9 +734,18 @@ void xover_init_default_filters(void) {
 void xover_recalculate_all(float sample_rate) {
     for (int ch = 0; ch < NUM_CHANNELS; ch++) {
         for (int i = 0; i < MAX_XOVER_BANDS; i++) {
+            if (xover_designed_ok[ch][i] &&
+                xover_designed_rate[ch][i] == sample_rate &&
+                memcmp(&xover_designed_recipe[ch][i], &xover_recipes[ch][i],
+                       sizeof(EqParamPacket)) == 0) {
+                continue;
+            }
             xover_design_filter(&xover_recipes[ch][i],
                                 &xover_filters[ch][i],
                                 sample_rate);
+            xover_designed_recipe[ch][i] = xover_recipes[ch][i];
+            xover_designed_rate[ch][i] = sample_rate;
+            xover_designed_ok[ch][i] = true;
         }
         xover_update_channel_bypass((uint8_t)ch);
     }
