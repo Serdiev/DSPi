@@ -216,7 +216,6 @@ void dsp_compute_coefficients(EqParamPacket *p, Filter *f, float sample_rate) {
 
         float sva1_f = 1.0f / (1.0f + g * (g + k));
         float sva2_f = g * sva1_f;
-        float sva3_f = g * sva2_f;
 
         float svm0_f = 0.0f, svm1_f = 0.0f, svm2_f = 0.0f;
         switch (p->type) {
@@ -240,9 +239,15 @@ void dsp_compute_coefficients(EqParamPacket *p, Filter *f, float sample_rate) {
             default: break;
         }
 
-        f->sva1 = sva1_f; f->sva2 = sva2_f; f->sva3 = sva3_f;
-        f->svm0 = svm0_f; f->svm1 = svm1_f; f->svm2 = svm2_f;
-        f->g = g;
+        f->sva1 = sva1_f; f->sva2 = sva2_f; f->sva3 = 0.0f;
+        f->svm0 = svm0_f;
+        // Fold the two coefficients that only exist for the per-sample
+        // recurrence into pre-multiplied forms; see dsp_svf.h.  m2 never
+        // materialises v2: the output mix reads ic2 directly and the state
+        // update folds the 2*g*v1 term.
+        f->svm1 = svm1_f + g * svm2_f;
+        f->svm2 = svm2_f;
+        f->g = 2.0f * g;
 
         // Also compute biquad coefficients as fallback (not used in SVF path)
         f->b0 = 1.0f; f->b1 = 0.0f; f->b2 = 0.0f; f->a1 = 0.0f; f->a2 = 0.0f;

@@ -273,6 +273,14 @@ firmware load with `qp = 0`, i.e. the 0.707 default for any LT band.
   `g = tan(pi*fp/Fs)`, `k = 1/Qp`, `r = tan(pi*f0/Fs)/g`, `m0 = 1`,
   `m1 = r/Q0 - k`, `m2 = r^2 - 1`. Biquad: `b = [1 + g0/Q0 + g0^2,
   2(g0^2 - 1), 1 - g0/Q0 + g0^2]`, `a` likewise from `gp`, `Qp`.
+- SVF coefficient convention (`dsp_svf.h`): the integrator coefficients are
+  stored as designed (`sva1 = 1/(1+g(g+k))`, `sva2 = g*sva1`), but the two
+  coefficients that only exist to drive the per-sample recurrence are folded:
+  `Filter.g` holds `2*g` and `Filter.svm1` holds `m1 + g*m2`. The loop therefore
+  never materialises `v2`; it reads the integrator state `ic2` directly and
+  updates it with `ic2' = ic2 + 2*g*v1`. The fold is an algebraic identity, so
+  the section's transfer function is unchanged, but the loop-carried dependency
+  from `v1` to the next sample's `v1` is one operation instead of three.
 - qp storage: `peq_qp_x512[NUM_CHANNELS][MAX_BANDS]` (dsp_pipeline.c),
   parallel to `filter_recipes` because `EqParamPacket` has no spare field.
 - RAM cost: 408 bytes (RP2350) / 168 bytes (RP2040).
